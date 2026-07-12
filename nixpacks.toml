@@ -1,0 +1,5 @@
+# Railway (Nixpacks) 建置設定
+[phases.setup]
+# fonts-noto-cjk: 中文字型 (K 線圖顯示中文)
+# ca-certificates: 修正 yfinance 連 Yahoo 的 SSL 憑證問題
+aptPkgs = ["fonts-noto-cjk", "fontconfig", "ca-certificates"]
