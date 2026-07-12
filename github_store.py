@@ -23,7 +23,9 @@ API_ROOT = "https://api.github.com"
 
 
 def _cfg():
-    token = os.environ.get("GITHUB_TOKEN", "")
+    # GitHub Actions 內建 secrets.GITHUB_TOKEN, 也支援自訂 GH_TOKEN
+    token = (os.environ.get("GITHUB_TOKEN", "")
+             or os.environ.get("GH_TOKEN", ""))
     repo = os.environ.get("GITHUB_REPO", "")
     branch = os.environ.get("GITHUB_BRANCH", "main")
     return token, repo, branch
