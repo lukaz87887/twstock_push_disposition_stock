@@ -1,26 +1,27 @@
 name: 處置股推播
 
-# 需要寫入 repo 的權限 (存 results/disposal.json 和 K 線圖)
 permissions:
   contents: write
 
 on:
   schedule:
-    # ★ 台北時間 (GitHub Actions 2026/03 起支援 timezone 欄位)
-    # 收盤後推最新 (含重試): 18:05 → 20:05 → 22:05 → 00:05
-    # 分鐘用 5 而非 0, 避開整點高負載 (GitHub 建議)
-    - cron: '5 18 * * 1-5'      # 平日 18:05 收盤後 (證交所公告已出)
-      timezone: 'Asia/Taipei'
-    - cron: '5 20 * * 1-5'      # 20:05 重試 (18:00 沒抓到才會真的跑)
-      timezone: 'Asia/Taipei'
-    - cron: '5 22 * * 1-5'      # 22:05 重試
-      timezone: 'Asia/Taipei'
-    - cron: '5 0 * * 2-6'       # 隔天 00:05 最後嘗試 (週二~週六 = 週一~週五的隔天)
-      timezone: 'Asia/Taipei'
-    - cron: '0 8 * * 1-5'       # 平日 08:00 盤前提醒
-      timezone: 'Asia/Taipei'
+    # ⚠️ GitHub Actions cron 一律使用 UTC (不支援時區設定)
+    # 台灣 = UTC+8 (無日光節約時間, 換算固定)
+    #
+    # 台北 08:00 = UTC 00:00  → 盤前提醒
+    # 台北 18:05 = UTC 10:05  → 收盤後推最新 (證交所公告已出)
+    # 台北 20:05 = UTC 12:05  → 重試 1
+    # 台北 22:05 = UTC 14:05  → 重試 2
+    # 台北 00:05 = UTC 16:05  → 最後嘗試 (前一天的 UTC 16:05)
+    #
+    # 星期換算: 台北週一~週五 → UTC 也是週一~週五 (因為時間都在白天)
+    #           但台北 00:05 (隔天凌晨) = UTC 前一天 16:05 → 仍是週一~週五
+    - cron: '0 0 * * 1-5'      # 台北 08:00 盤前提醒
+    - cron: '5 10 * * 1-5'     # 台北 18:05 收盤後
+    - cron: '5 12 * * 1-5'     # 台北 20:05 重試
+    - cron: '5 14 * * 1-5'     # 台北 22:05 重試
+    - cron: '5 16 * * 1-5'     # 台北 00:05 (隔天凌晨) 最後嘗試
 
-  # 手動觸發 (測試用, Actions 分頁會出現 "Run workflow" 按鈕)
   workflow_dispatch:
     inputs:
       force:
@@ -43,7 +44,7 @@ jobs:
           python-version: '3.11'
           cache: 'pip'
 
-      - name: 安裝中文字型 (K 線圖顯示中文)
+      - name: 安裝中文字型
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq fonts-noto-cjk fontconfig
@@ -55,19 +56,16 @@ jobs:
       - name: 執行處置股任務
         env:
           TZ: Asia/Taipei
-          # --- 推播 ---
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
           LINE_TO: ${{ secrets.LINE_TO }}
-          # --- 存檔 (用內建 token, 不用自己建!) ---
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPO: ${{ github.repository }}
           GITHUB_BRANCH: ${{ github.ref_name }}
-          # --- 設定 ---
           CHART_TARGETS: ${{ vars.CHART_TARGETS || 'telegram,line' }}
-          # 00:05 那班 = 今日最後一次嘗試 (沒資料就發通知)
-          IS_LAST_ATTEMPT: ${{ github.event.schedule == '5 0 * * 2-6' && '1' || '0' }}
+          # UTC 16:05 那班 = 台北 00:05 = 今日最後一次嘗試
+          IS_LAST_ATTEMPT: ${{ github.event.schedule == '5 16 * * 1-5' && '1' || '0' }}
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.force }}" = "true" ]; then
             python run_once.py disposal --force

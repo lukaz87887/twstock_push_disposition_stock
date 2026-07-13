@@ -1,15 +1,14 @@
 name: Keep Alive
 
-# ⚠️ 為什麼需要這個:
-# GitHub 會自動停用「公開 repo 連續 60 天沒有活動」的排程 workflow。
-# 這個 workflow 每 20 天自動 commit 一次, 保持 repo 活躍, 讓處置股排程永遠不會被停用。
+# 防止 GitHub 自動停用「60 天無活動」的排程 workflow
+# 每月 1 號和 21 號自動 commit 一次, 保持 repo 活躍
 
 permissions:
   contents: write
 
 on:
   schedule:
-    - cron: '0 3 1,21 * *'    # 每月 1 號和 21 號 (約每 20 天一次)
+    - cron: '0 3 1,21 * *'    # UTC 03:00 (台北 11:00), 每月 1 號和 21 號
   workflow_dispatch:
 
 jobs:
@@ -25,5 +24,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add .github/last_keepalive.txt
-          git diff --staged --quiet || git commit -m "chore: keepalive (防止排程被自動停用)"
+          git diff --staged --quiet || git commit -m "chore: keepalive"
           git push
