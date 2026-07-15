@@ -30,7 +30,7 @@ try:
 except AttributeError:
     pass
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from scan_tasks import run_disposal_scan, run_momentum_scan, save_result
 from github_store import push_json, push_bytes
@@ -128,6 +128,41 @@ def run_disposal(force: bool = False):
     _log("=" * 50)
 
     if not force:
+        pushed_date = _get_pushed_date()          # 已推播的資料日期 (字串或 None)
+        pushed = _norm_date(pushed_date)
+
+        if is_last:
+            # ── 凌晨 00:05 那班: 此刻已跨到「隔天」, 它其實是「前一交易日」的收尾 ──
+            #    所以日期判斷全部改用「昨天」, 而不是 datetime.now() 的今天,
+            #    而且「不」呼叫 is_market_open_today() (它只會查隔天、必然落空 → 誤報來源)
+            trading_day = datetime.now() - timedelta(days=1)
+            trading_str = trading_day.strftime("%Y-%m-%d")
+
+            # (1) 前一交易日已成功推播 → 靜默跳過 (這就是原本會誤報的情境)
+            if pushed and pushed == _norm_date(trading_str):
+                _log(f"前一交易日 ({trading_str}) 已成功推播, 凌晨班跳過")
+                return
+            # (2) fail-safe: 讀不到推播紀錄時, 寧可不發, 也不要誤報
+            if pushed_date is None:
+                _log("無法讀取推播紀錄, 為避免誤報, 凌晨班不發通知")
+                return
+            # (3) 前一交易日本就是週末/固定假日 → 本來就不該有資料, 靜默跳過
+            if trading_day.weekday() >= 5 or is_fixed_holiday(trading_day):
+                _log(f"前一交易日 ({trading_str}) 為假日, 凌晨班跳過")
+                return
+            # (4) 走到這 = 前一交易日整天都沒抓到 → 才是真異常, 發通知
+            _notify_all(f"📭 台股處置股提醒 ({trading_str})\n"
+                        f"該交易日到最後一班仍未抓到證交所行情資料。\n"
+                        f"可能原因: 颱風假/臨時休市/證交所延遲。\n"
+                        f"(系統運作正常, 僅告知)")
+            _log(f"前一交易日 ({trading_str}) 未成功推播 → 已發送「未抓到資料」通知")
+            return
+
+        # ── 一般班次 (18:05 / 20:05 / 22:05): 以「今天」判斷 ──
+        # 今天已推過就跳過 (擋掉同日多班重複推播)
+        if pushed and pushed == _norm_date(today_str):
+            _log(f"今日 ({today_str}) 已推播過, 跳過 (避免重複)")
+            return
         # 週末不跑
         if datetime.now().weekday() >= 5:
             _log("週末, 跳過")
@@ -140,19 +175,7 @@ def run_disposal(force: bool = False):
         ready, reason = is_market_open_today()
         _log(f"開盤檢查: {reason}")
         if not ready:
-            if is_last:
-                _notify_all(f"📭 台股處置股提醒 ({today_str})\n"
-                            f"今日到最後一班仍未抓到證交所行情資料。\n"
-                            f"可能原因: 颱風假/臨時休市/證交所延遲。\n"
-                            f"(系統運作正常, 僅告知)")
-                _log("已發送「未抓到資料」通知")
-            else:
-                _log("資料未就緒, 等下一班重試 (由 GitHub Actions cron 觸發)")
-            return
-        # ★ 防重複: 今天已經推過就跳過
-        prev_url_date = _today_already_pushed()
-        if prev_url_date:
-            _log(f"今日 ({today_str}) 已推播過, 跳過 (避免重複)")
+            _log("資料未就緒, 等下一班重試 (由 GitHub Actions cron 觸發)")
             return
 
     _log("▶ 開始掃描處置股...")
@@ -200,22 +223,36 @@ def run_disposal(force: bool = False):
     _log(f"✔ 完成")
 
 
-def _today_already_pushed() -> bool:
-    """檢查 repo 上的 disposal.json 是不是今天產的 (避免同一天重複推)"""
+def _norm_date(s) -> str:
+    """各種日期格式統一成 'YYYYMMDD' 再比較 (防未來 data_date 格式變動)。
+    支援 2026-07-14 / 2026/07/14 / 20260714 / 民國 1140714 / 114/07/14。"""
+    if not s:
+        return ""
+    digits = "".join(ch for ch in str(s) if ch.isdigit())
+    if len(digits) == 8:            # 20260714 (西元)
+        return digits
+    if len(digits) == 7:            # 1140714 (民國年)
+        return str(int(digits[:3]) + 1911) + digits[3:]
+    return digits                   # 其他長度原樣 (保底)
+
+
+def _get_pushed_date():
+    """讀 repo 上 disposal.json 的 data_date (最後一次成功推播的資料日期)。
+    回傳日期字串; 讀不到 (無 repo / 網路失敗 / 檔案不存在) 時回傳 None。
+    注意: 呼叫端需自行 fail-safe, 不可把 None 當成「沒推過」而誤發通知。"""
     import requests
     repo = _env("GITHUB_REPO", "")
     branch = _env("GITHUB_BRANCH", "main")
     if not repo:
-        return False
+        return None
     url = f"https://raw.githubusercontent.com/{repo}/{branch}/results/disposal.json"
     try:
         r = requests.get(url, timeout=10)
         if r.status_code == 200:
-            data = r.json()
-            return data.get("data_date") == datetime.now().strftime("%Y-%m-%d")
+            return r.json().get("data_date")
     except Exception:
         pass
-    return False
+    return None
 
 
 # ==================================================================
