@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-20 20:25:35",
+  "generated_at": "2026-07-20 21:14:50",
   "data_date": "2026-07-20",
   "scanned": 22,
   "items": [
@@ -334,64 +334,8 @@
       "is_active": true
     }
   ],
-  "added_today": [
-    {
-      "code": "8383",
-      "name": "千附",
-      "market": "TWO",
-      "close": 80.2,
-      "ma20": 69.95,
-      "diff_pct": 14.65,
-      "abs_diff_pct": 14.65,
-      "color": "⚪",
-      "change_5d_pct": 4.7,
-      "disposal_start": "2026-07-20",
-      "disposal_end": "2026-07-31",
-      "measure": "因連續3個營業日達本中心作業要點第四條第一項第一款",
-      "is_active": true
-    },
-    {
-      "code": "3090",
-      "name": "日電貿",
-      "market": "TW",
-      "close": 175.5,
-      "ma20": 283.73,
-      "diff_pct": -38.14,
-      "abs_diff_pct": 38.14,
-      "color": "⚪",
-      "change_5d_pct": -31.98,
-      "disposal_start": "2026-07-20",
-      "disposal_end": "2026-07-31",
-      "measure": "第二次處置",
-      "is_active": true
-    }
-  ],
-  "removed_today": [
-    {
-      "code": "1447",
-      "name": "力鵬"
-    },
-    {
-      "code": "1617",
-      "name": "榮星"
-    },
-    {
-      "code": "3147",
-      "name": "大綜"
-    },
-    {
-      "code": "3230",
-      "name": "錦明"
-    },
-    {
-      "code": "6217",
-      "name": "中探針"
-    },
-    {
-      "code": "7795",
-      "name": "長廣"
-    }
-  ],
+  "added_today": [],
+  "removed_today": [],
   "all_codes": [
     "1515",
     "1718",
