@@ -2,19 +2,25 @@
 """
 notify_line.py — LINE 推播 (文字訊息 + 圖片)
 
-用 LINE Messaging API 的 push message 主動推播。
+用 LINE Messaging API 的 broadcast 廣播給「所有加入官方帳號的好友」。
+(原本是 push 給單一 LINE_TO, 只有一個人收得到; 改為 broadcast 後全體好友都收到)
 
 與 Telegram 的差異:
   • LINE 圖片訊息需要「公開 URL」, 不能直接傳位元組
     → K 線圖先 push 到 GitHub, 用 raw URL 當圖片來源
-  • LINE 單次 push 最多 5 則訊息, 要分批
-  • 免費方案每月 500 則
+  • LINE 單次最多 5 則訊息, 要分批
 
 需要環境變數:
   LINE_CHANNEL_ACCESS_TOKEN — LINE Developers → Messaging API → Channel access token
-  LINE_TO                   — 推播對象 userId (或群組 id)
-                              (自己的 userId 可在 LINE Developers Console 看到,
-                               或用 webhook 抓; 要先加官方帳號好友)
+  (broadcast 不需要 LINE_TO)
+
+⚠️ 使用前提:
+  • broadcast 只送給「已把官方帳號加為好友」的人 → 請每位接收者先加好友
+  • 免費(輕用量)方案: 台灣目前每月 200 則, 用完不可加購
+  • 計費 = 發送 1 次 × 收到的好友人數
+      例) 10 位好友 × 每月約 22 個交易日 = 220 則 > 200 → 月底前會用完額度而靜默停發
+      → 「好友人數 × 每月發送次數」需 ≤ 200, 否則要升級付費方案
+  • 用量查詢: LINE 官方帳號後台 → 分析 → 訊息則數
 
 申請步驟見 DEPLOY_LINE.md
 """
@@ -22,33 +28,36 @@ import os
 import time
 import requests
 
-PUSH_URL = "https://api.line.me/v2/bot/message/push"
+BROADCAST_URL = "https://api.line.me/v2/bot/message/broadcast"
 
 
 def _cfg():
-    return (os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", ""),
-            os.environ.get("LINE_TO", ""))
+    # broadcast 只需要 access token (不再需要 LINE_TO)
+    return os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "")
 
 
 def _push(messages: list) -> bool:
-    """推一批訊息 (LINE 單次最多 5 則)"""
-    token, to = _cfg()
-    if not token or not to:
-        print("[line] 缺 LINE_CHANNEL_ACCESS_TOKEN / LINE_TO")
+    """廣播一批訊息給『所有加入官方帳號的好友』(LINE 單次最多 5 則)。
+    函式名維持 _push, 讓 send_text / send_image / send_batch /
+    push_disposal_line 等呼叫端完全不用改。"""
+    token = _cfg()
+    if not token:
+        print("[line] 缺 LINE_CHANNEL_ACCESS_TOKEN")
         return False
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
     }
-    payload = {"to": to, "messages": messages[:5]}
+    payload = {"messages": messages[:5]}   # ★ broadcast 不需要 "to"
     try:
-        r = requests.post(PUSH_URL, headers=headers, json=payload, timeout=20)
+        r = requests.post(BROADCAST_URL, headers=headers,
+                          json=payload, timeout=20)
         if r.status_code == 200:
             return True
-        print(f"[line] 推播失敗 HTTP {r.status_code}: {r.text[:200]}")
+        print(f"[line] 廣播失敗 HTTP {r.status_code}: {r.text[:200]}")
         return False
     except Exception as e:
-        print(f"[line] 推播例外: {e}")
+        print(f"[line] 廣播例外: {e}")
         return False
 
 
