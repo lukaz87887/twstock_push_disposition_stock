@@ -34,7 +34,7 @@ from datetime import datetime, timedelta
 
 from scan_tasks import run_disposal_scan, run_momentum_scan, save_result
 from github_store import push_json, push_bytes
-from core_stock import is_market_open_today, is_fixed_holiday
+from core_stock import is_market_open_today, is_market_open_on, is_fixed_holiday
 from notify_telegram import (push_disposal, push_momentum, send_message,
                              make_combined_kline_png)
 import notify_line
@@ -149,6 +149,14 @@ def run_disposal(force: bool = False):
             # (3) 前一交易日本就是週末/固定假日 → 本來就不該有資料, 靜默跳過
             if trading_day.weekday() >= 5 or is_fixed_holiday(trading_day):
                 _log(f"前一交易日 ({trading_str}) 為假日, 凌晨班跳過")
+                return
+            # (3b) 直接問證交所「前一交易日」有沒有開盤:
+            #      補假/中秋/光復節/颱風假 不在固定清單, 以前會被誤報成「沒抓到資料」。
+            #      沒開盤 (或查詢失敗, fail-safe) → 靜默跳過; 只有「有開盤卻沒推」才通知。
+            was_open, reason = is_market_open_on(trading_day)
+            _log(f"前一交易日開盤檢查: {reason}")
+            if not was_open:
+                _log(f"前一交易日 ({trading_str}) 未開盤或無法確認, 凌晨班不發通知")
                 return
             # (4) 走到這 = 前一交易日整天都沒抓到 → 才是真異常, 發通知
             _notify_all(f"📭 台股處置股提醒 ({trading_str})\n"

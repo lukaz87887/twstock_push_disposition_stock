@@ -1231,13 +1231,22 @@ def is_market_open_today() -> tuple[bool, str]:
     回傳 (是否就緒, 說明訊息)。
     用 MI_INDEX 帶今天日期查詢, stat=OK 且有資料表示已就緒。
     """
+    return is_market_open_on(datetime.now())
+
+
+def is_market_open_on(day: datetime) -> tuple[bool, str]:
+    """
+    檢查證交所「指定日期」有沒有大盤行情資料 (= 那天有開盤且資料已出)。
+    凌晨 00:05 那班用它查「前一交易日」是否真的有開盤,
+    以免 補假/中秋/颱風假 等不在固定假日清單的休市日被誤報成「沒抓到資料」。
+    """
     HEADERS = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
                       'AppleWebKit/537.36 (KHTML, like Gecko) '
                       'Chrome/120.0.0.0 Safari/537.36',
         'Accept': 'application/json',
     }
-    today = datetime.now()
+    today = day
     # 週末直接判定沒開盤 (不用打 API)
     if today.weekday() >= 5:
         return False, "週末休市"
@@ -1253,7 +1262,10 @@ def is_market_open_today() -> tuple[bool, str]:
         payload = r.json()
         if payload.get("stat") != "OK":
             # stat 不 OK = 今天沒有資料 (假日/颱風/尚未更新)
-            return False, f"今日尚無行情資料 (stat={payload.get('stat','?')})"
+            return False, f"{date_str} 無行情資料 (stat={payload.get('stat','?')})"
+        # 回應的資料日期必須就是查詢日 (防止拿到舊資料誤判已就緒)
+        if payload.get("date") and payload.get("date") != date_str:
+            return False, f"回應日期 {payload.get('date')} ≠ {date_str}"
         # 有資料表 = 確實有開盤且已更新
         for t in payload.get("tables", []):
             if t.get("data"):
